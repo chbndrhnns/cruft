@@ -1,3 +1,4 @@
+import time
 import json
 import os
 import sys
@@ -15,20 +16,43 @@ from cookiecutter.prompt import prompt_for_config
 from examples import example
 from git import Repo
 
+
 from cruft.exceptions import (
     CruftAlreadyPresent,
     InvalidCookiecutterRepository,
     NoCruftFound,
     TempDirectoryDeleteFailed,
     UnableToFindCookiecutterTemplate,
-)
+    TempDirectoryDeleteFailed)
 
 try:
     import toml  # type: ignore
 except ImportError:  # pragma: no cover
     toml = None  # type: ignore
 
-json_dumps = partial(json.dumps, ensure_ascii=False, indent=4, separators=(",", ": "))
+json_dumps = partial(json.dumps, ensure_ascii=False,
+                     indent=4, separators=(",", ": "))
+
+
+class RobustTemporaryDirectory(TemporaryDirectory):
+    """Retries deletion on __exit__
+
+    Inspired by https://github.com/easybuilders/easybuild-framework/blob/bf663f70e44256644f4adc5bcbfc7d1a3fbc1232/easybuild/tools/filetools.py#L1366
+    """
+
+    def cleanup(self):
+        if self._finalizer.detach():
+            n = 3
+            ok = False
+            for i in range(0, n):
+                try:
+                    rmtree(self.name)
+                    ok = True
+                except OSError as err:
+                    time.sleep(0.01)
+            if not ok:
+                raise TempDirectoryDeleteFailed(f'Failed to remove path {self.name} with shutil.rmtree, '
+                                                f'even after {n} attempts.')
 
 
 class RobustTemporaryDirectory(TemporaryDirectory):
@@ -85,7 +109,8 @@ def create(
 
         context_file = cookiecutter_template_dir / "cookiecutter.json"
 
-        config_dict = get_user_config(config_file=config_file, default_config=default_config)
+        config_dict = get_user_config(
+            config_file=config_file, default_config=default_config)
 
         context = generate_context(
             context_file=str(context_file),
@@ -99,7 +124,8 @@ def create(
         context["cookiecutter"]["_template"] = template_git_url
 
         (main_cookiecutter_directory / ".cruft.json").write_text(
-            json_dumps({"template": template_git_url, "commit": last_commit, "context": context})
+            json_dumps({"template": template_git_url,
+                        "commit": last_commit, "context": context})
         )
 
         return generate_files(
@@ -122,7 +148,8 @@ def check(expanded_dir: str = ".") -> bool:
 
     cruft_state = json.loads(cruft_file.read_text())
     with RobustTemporaryDirectory() as cookiecutter_template_dir:
-        repo = Repo.clone_from(cruft_state["template"], cookiecutter_template_dir)
+        repo = Repo.clone_from(
+            cruft_state["template"], cookiecutter_template_dir)
         last_commit = repo.head.object.hexsha
         if last_commit == cruft_state["commit"] or not repo.index.diff(cruft_state["commit"]):
             return True
@@ -140,7 +167,8 @@ def _generate_output(
     context = generate_context(
         context_file=context_file, extra_context=cruft_state["context"]["cookiecutter"]
     )
-    context["cookiecutter"] = prompt_for_config(context, not cookiecutter_input)
+    context["cookiecutter"] = prompt_for_config(
+        context, not cookiecutter_input)
     context["cookiecutter"]["_template"] = cruft_state["template"]
 
     generate_files(
@@ -168,7 +196,8 @@ def update(
 
     skip_cruft = cruft_state.get("skip", [])
     if toml and pyproject_file.is_file():
-        pyproject_cruft = toml.loads(pyproject_file.read_text()).get("tool", {}).get("cruft", {})
+        pyproject_cruft = toml.loads(pyproject_file.read_text()).get(
+            "tool", {}).get("cruft", {})
         skip_cruft.extend(pyproject_cruft.get("skip", []))
 
     with RobustTemporaryDirectory() as compare_directory_str:
@@ -222,7 +251,8 @@ def update(
                     file_path.unlink()
 
         diff = run(
-            ["git", "diff", "--no-index", str(old_main_directory), str(new_main_directory)],
+            ["git", "diff", "--no-index",
+                str(old_main_directory), str(new_main_directory)],
             stdout=PIPE,
             stderr=PIPE,
         ).stdout.decode("utf8")
@@ -243,7 +273,8 @@ def update(
                     'Respond with "s" to intentionally skip the update while marking '
                     "your project as up-to-date."
                 )
-                update_str = input("Apply diff and update [y/n/s]? ").lower()  # nosec
+                update_str = input(
+                    "Apply diff and update [y/n/s]? ").lower()  # nosec
 
             if update_str == "n":
                 sys.exit("User cancelled Cookiecutter template update.")
@@ -300,7 +331,8 @@ def link(
 
         context_file = cookiecutter_template_dir / "cookiecutter.json"
 
-        config_dict = get_user_config(config_file=config_file, default_config=default_config)
+        config_dict = get_user_config(
+            config_file=config_file, default_config=default_config)
 
         context = generate_context(
             context_file=context_file,
@@ -318,13 +350,16 @@ def link(
         else:  # pragma: no cover
             print("")
             print(f"The latest commit to the template is {last_commit}")
-            print("Press enter to link against this commit or provide an alternative commit.")
+            print(
+                "Press enter to link against this commit or provide an alternative commit.")
             print("")
-            use_commit = input(f"Link to template at commit [{last_commit}]: ")  # nosec
+            use_commit = input(
+                f"Link to template at commit [{last_commit}]: ")  # nosec
             use_commit = use_commit if use_commit.strip() else last_commit
 
         cruft_file.write_text(
-            json_dumps({"template": template_git_url, "commit": use_commit, "context": context})
+            json_dumps({"template": template_git_url,
+                        "commit": use_commit, "context": context})
         )
 
     return True
