@@ -47,4 +47,5 @@ class InvalidCookiecutterRepository(CruftError):
 
 class TempDirectoryDeleteFailed(CruftError):
     """Raised when deleting a temporary directory fails"""
+
     pass

@@ -2,6 +2,7 @@ import time
 import json
 import os
 import sys
+import time
 from functools import partial
 from pathlib import Path
 from shutil import move, rmtree
@@ -20,6 +21,7 @@ from cruft.exceptions import (
     CruftAlreadyPresent,
     InvalidCookiecutterRepository,
     NoCruftFound,
+    TempDirectoryDeleteFailed,
     UnableToFindCookiecutterTemplate,
     TempDirectoryDeleteFailed)
 
@@ -51,6 +53,30 @@ class RobustTemporaryDirectory(TemporaryDirectory):
             if not ok:
                 raise TempDirectoryDeleteFailed(f'Failed to remove path {self.name} with shutil.rmtree, '
                                                 f'even after {n} attempts.')
+
+
+class RobustTemporaryDirectory(TemporaryDirectory):
+    """Retries deletion on __exit__
+
+    Inspired by https://github.com/easybuilders/easybuild-framework/blob/
+    bf663f70e44256644f4adc5bcbfc7d1a3fbc1232/easybuild/tools/filetools.py#L1366
+    """
+
+    def cleanup(self):
+        if self._finalizer.detach():
+            n = 3
+            ok = False
+            for _ in range(0, n):
+                try:
+                    rmtree(self.name)
+                    ok = True
+                except OSError:
+                    time.sleep(0.01)
+            if not ok:
+                raise TempDirectoryDeleteFailed(
+                    f"Failed to remove path {self.name} with shutil.rmtree, "
+                    f"even after {n} attempts."
+                )
 
 
 @example("https://github.com/timothycrosley/cookiecutter-python/", no_input=True)
