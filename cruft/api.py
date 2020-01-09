@@ -2,6 +2,7 @@ import json
 import os
 import stat
 import sys
+import time
 from functools import partial
 from pathlib import Path
 from shutil import move, rmtree
@@ -16,6 +17,7 @@ from cruft.exceptions import (
     CruftAlreadyPresent,
     InvalidCookiecutterRepository,
     NoCruftFound,
+    TempDirectoryDeleteFailed,
     UnableToFindCookiecutterTemplate,
 )
 from examples import example
@@ -26,28 +28,43 @@ try:
 except ImportError:  # pragma: no cover
     toml = None  # type: ignore
 
-json_dumps = partial(json.dumps, ensure_ascii=False, indent=4, separators=(",", ": "))
+json_dumps = partial(json.dumps, ensure_ascii=False,
+                     indent=4, separators=(",", ": "))
 
 
 class RobustTemporaryDirectory(TemporaryDirectory):
     """Retries deletion on __exit__
-
     This is caused by Windows behavior that you cannot delete a directory
     if it contains any read-only files.
-
     cf. https://bugs.python.org/issue19643
     """
+
+    DELETE_MAX_RETRY_COUNT = 10
+    DELETE_RETRY_TIME = 0.1
 
     def cleanup(self):
         if self._finalizer.detach():
 
             def readonly_handler(rm_func, path, exc_info):
-                if issubclass(exc_info[0], PermissionError) and exc_info[1].winerror == 5:
+                if issubclass(exc_info[0], PermissionError):
                     os.chmod(path, stat.S_IWRITE)
                     return rm_func(path)
-                raise exc_info[1]
 
-            rmtree(self.name, onerror=readonly_handler)
+            err_count = 0
+            while True:
+                try:
+                    rmtree(self.name, onerror=readonly_handler)
+                    break
+                except (OSError, WindowsError):
+                    err_count += 1
+                    if err_count > self.DELETE_MAX_RETRY_COUNT:
+                        # This serves as a workaround to be able to use this tool under Windows.
+                        # Deleting temporary folders fails because Python cannot delete them.
+                        if os.name != "nt":
+                            raise
+                        else:
+                            break
+                    time.sleep(self.DELETE_RETRY_TIME)
 
 
 @example("https://github.com/timothycrosley/cookiecutter-python/", no_input=True)
