@@ -17,7 +17,6 @@ from cruft.exceptions import (
     CruftAlreadyPresent,
     InvalidCookiecutterRepository,
     NoCruftFound,
-    TempDirectoryDeleteFailed,
     UnableToFindCookiecutterTemplate,
 )
 from examples import example
